@@ -1,0 +1,7 @@
+# 统一 LF 换行，保证 build.sh 在 Linux/WSL 下可直接执行
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.png binary
+*.jpg binary
+*.exe binary

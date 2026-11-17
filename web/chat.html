@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>在线聊天室</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="chat-page">
+    <div class="chat-container">
+        <header class="chat-header">
+            <div class="header-title">
+                <span class="dot"></span>
+                <h1>在线聊天室</h1>
+            </div>
+            <div class="header-user">
+                <span id="usernameDisplay"></span>
+                <button class="logout-btn" onclick="logout()">退出</button>
+            </div>
+        </header>
+
+        <div class="messages" id="messages"></div>
+
+        <div class="connection-status" id="connectionStatus">连接中...</div>
+
+        <form class="input-area" onsubmit="sendMessage(event)">
+            <input type="text" id="messageInput" placeholder="输入消息，回车发送..." autocomplete="off" maxlength="1000">
+            <button type="submit" id="sendBtn">发送</button>
+        </form>
+    </div>
+
+    <script src="/chat.js"></script>
+</body>
+</html>

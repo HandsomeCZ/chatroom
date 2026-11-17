@@ -1,0 +1,9 @@
+{
+    "files.eol": "\n",
+    "C_Cpp.default.cppStandard": "c++14",
+    "C_Cpp.default.cStandard": "c11",
+    "editor.tabSize": 4,
+    "files.associations": {
+        "*.h": "cpp"
+    }
+}
