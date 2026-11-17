@@ -85,6 +85,34 @@ bash build.sh
 - `users`：id、username（唯一）、password_hash（加盐 SHA-256）
 - `messages`：id、user_id、username、content、created_at
 
+## 安装 Node.js 与 Docker（数据放 D 盘）
+
+WSL 的系统盘（ext4.vhdx）默认在 C 盘。为尽量不占 C 盘，附带了安装脚本：
+
+- Node.js：解压到 `/mnt/d/nodejs`，完全不占 C 盘
+- Docker：引擎本体较小（装在 C 盘 vhdx），但镜像/容器数据尽量放到 D 盘
+
+**准备**：Node 安装包已放在 `D:\node-v26.13.1-linux-x64.tar.xz`（约 33MB，需保持在 D 盘根目录）。
+
+**运行**（在 WSL Ubuntu 终端）：
+
+```bash
+cd /mnt/d/mycode/chatroom
+bash install-tools.sh
+```
+
+脚本会自动判断：
+- 内核支持 loop 挂载 → 在 D 盘建 20G ext4 数据盘 + overlay2 驱动（最佳）
+- 不支持 → 降级为 `/mnt/d/mydocker` + vfs 驱动（能用但较慢、占空间多）
+
+装完按提示重新登录终端，然后验证：
+
+```bash
+docker info | grep -E 'Docker Root Dir|Storage Driver'
+docker run hello-world
+node --version
+```
+
 ## 注意事项
 
 - 密码用加盐 SHA-256 存储，不适合生产环境的高安全要求，仅作学习/内部使用。
