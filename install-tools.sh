@@ -5,7 +5,10 @@ set -e
 
 D_DRIVE="/mnt/d"
 NODE_ARCHIVE="$D_DRIVE/node-v26.13.1-linux-x64.tar.xz"
-NODE_DIR="$D_DRIVE/nodejs"
+# 关键：Node 必须装到 WSL 原生文件系统（home 目录），不能放 /mnt/d
+# 原因：/mnt/d 是 Windows NTFS 挂载(drvfs)，默认 noexec，无法执行 Linux 二进制
+# 代价：约 150MB 在 C 盘 vhdx，但这是能运行 node 的唯一方式
+NODE_DIR="$HOME/.local/node"
 DOCKER_DISK="$D_DRIVE/docker-data.ext4"
 DOCKER_MNT="/mnt/docker-data"
 
@@ -35,18 +38,20 @@ if [ ! -f "$NODE_ARCHIVE" ]; then
     exit 1
 fi
 
-if command -v node >/dev/null 2>&1 && node --version 2>/dev/null | grep -q v; then
-    echo "Node 似乎已安装: $(node --version)，跳过安装"
+# 注意：必须检查目标路径的 node，不能用 `command -v node`
+# 否则系统里坏的/占位的 /usr/bin/node 会被误判为"已安装"而跳过
+if [ -x "$NODE_DIR/bin/node" ] && "$NODE_DIR/bin/node" --version 2>/dev/null | grep -q v; then
+    echo "Node 已安装于 $NODE_DIR: $($NODE_DIR/bin/node --version)，跳过安装"
 else
-    echo "[1/4] 解压 Node 到 $NODE_DIR"
+    echo "[1/4] 解压 Node 到 $NODE_DIR（WSL 原生文件系统，可执行）"
     mkdir -p "$NODE_DIR"
     tar -xJf "$NODE_ARCHIVE" -C "$NODE_DIR" --strip-components=1
 
     echo "[2/4] 配置 PATH（写入 ~/.bashrc）"
-    if ! grep -q 'nodejs/bin' ~/.bashrc 2>/dev/null; then
+    if ! grep -q '\.local/node/bin' ~/.bashrc 2>/dev/null; then
         echo '' >> ~/.bashrc
-        echo '# Node.js (installed on D drive)' >> ~/.bashrc
-        echo 'export PATH="/mnt/d/nodejs/bin:$PATH"' >> ~/.bashrc
+        echo '# Node.js (installed in WSL home, executable)' >> ~/.bashrc
+        echo 'export PATH="$HOME/.local/node/bin:$PATH"' >> ~/.bashrc
     fi
     export PATH="$NODE_DIR/bin:$PATH"
     echo "  PATH 已配置，新开终端自动生效"
@@ -167,8 +172,14 @@ echo "=========================================="
 echo ""
 echo "需要执行以下操作让配置完全生效："
 echo "  1. 重新登录终端（让 docker 组生效，或执行: newgrp docker）"
-echo "  2. 验证: docker info | grep -E 'Docker Root Dir|Storage Driver'"
+echo "  2. 验证 node（注意 which 显示的路径）:"
+echo "     which node          # 应显示 /home/cz/.local/node/bin/node"
+echo "     node --version      # 应显示 v26.13.1"
+echo "  3. 验证: docker info | grep -E 'Docker Root Dir|Storage Driver'"
 echo "     Docker Root Dir 应显示: $DATA_ROOT"
 echo "     Storage Driver 应显示: $STORAGE_DRIVER"
-echo "  3. 测试: docker run hello-world"
+echo "  4. 测试: docker run hello-world"
+echo ""
+echo "  重要：如果 which node 仍指向 /usr/bin/node，说明有个旧的坏 node 干扰，"
+echo "        退出当前终端、重新打开一个再试（PATH 需重新加载）"
 echo ""
