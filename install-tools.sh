@@ -117,21 +117,12 @@ echo "========== 第三部分：安装 Docker 引擎 =========="
 if command -v docker >/dev/null 2>&1; then
     echo "Docker 已安装: $(docker --version)，跳过安装"
 else
-    echo "[1/4] 更新 apt 源"
+    echo "[1/2] 更新 apt 源"
     sudo apt update -y
 
-    echo "[2/4] 安装依赖"
-    sudo apt install -y ca-certificates curl gnupg
-
-    echo "[3/4] 添加 Docker 官方源"
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-
-    echo "[4/4] 安装 Docker Engine"
-    sudo apt update -y
-    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    echo "[2/2] 从 Ubuntu 自带源安装 Docker（docker.io）"
+    echo "  说明：Docker 官方源在国内常连不上，改用 Ubuntu 自带包，版本够用"
+    sudo apt install -y docker.io
 fi
 
 # 配置 daemon.json
