@@ -61,18 +61,12 @@ echo ""
 echo "========== 第二部分：在 D 盘创建 Docker 数据盘 =========="
 
 echo "[检查] WSL 内核是否支持 loop 设备挂载"
-if echo 'test' > /proc/sys/kernel/loop 2>/dev/null; then
-    echo "  OK: 内核支持 loop（可挂载 ext4 虚拟磁盘）"
+if losetup -f >/dev/null 2>&1; then
+    echo "  OK: losetup 可用，尝试 ext4 数据盘方案"
     LOOP_OK=1
 else
-    # 更可靠的检测：直接尝试 losetup
-    if losetup -f >/dev/null 2>&1; then
-        echo "  OK: losetup 可用"
-        LOOP_OK=1
-    else
-        echo "  警告: 内核可能不支持 loop 挂载"
-        LOOP_OK=0
-    fi
+    echo "  警告: losetup 不可用，将用 vfs 降级方案"
+    LOOP_OK=0
 fi
 
 # 实际尝试创建并挂载 ext4 数据盘，成功用 overlay2，失败自动降级到 vfs
@@ -80,7 +74,7 @@ LOOP_SETUP_OK=0
 if [ "$LOOP_OK" -eq 1 ]; then
     echo "  尝试创建 ext4 数据盘..."
     if sudo mkdir -p "$DOCKER_MNT" && \
-       { [ -f "$DOCKER_DISK" ] || (fallocate -l 20G "$DOCKER_DISK" && sudo mkfs.ext4 -q -F "$DOCKER_DISK"); } && \
+       { [ -f "$DOCKER_DISK" ] || (truncate -s 20G "$DOCKER_DISK" && sudo mkfs.ext4 -q -F "$DOCKER_DISK"); } && \
        { mountpoint -q "$DOCKER_MNT" || sudo mount -o loop "$DOCKER_DISK" "$DOCKER_MNT"; }; then
         LOOP_SETUP_OK=1
         echo "  OK: ext4 数据盘已挂载到 $DOCKER_MNT"
@@ -139,6 +133,7 @@ sudo tee /etc/docker/daemon.json >/dev/null <<EOF
   }
 }
 EOF
+sudo mkdir -p "$DATA_ROOT"
 cat /etc/docker/daemon.json
 
 # 把当前用户加入 docker 组（免 sudo）
@@ -152,8 +147,17 @@ if command -v systemctl >/dev/null 2>&1 && sudo systemctl start docker 2>/dev/nu
     echo "  systemctl 启动成功"
 else
     echo "  systemctl 不可用，尝试直接启动 dockerd"
-    sudo dockerd >/tmp/dockerd.log 2>&1 &
-    sleep 3
+    # WSL 经典坑：iptables 用 nft 后端会让 dockerd 起不来，切到 legacy
+    if command -v update-alternatives >/dev/null 2>&1; then
+        sudo update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
+        sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+    fi
+    sudo nohup dockerd >/tmp/dockerd.log 2>&1 &
+    sleep 5
+    if ! docker info >/dev/null 2>&1; then
+        echo "  !! dockerd 启动失败，最近日志："
+        tail -n 15 /tmp/dockerd.log 2>/dev/null || true
+    fi
 fi
 
 echo ""
