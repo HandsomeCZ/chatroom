@@ -113,8 +113,19 @@ fi
 echo ""
 echo "========== 第三部分：安装 Docker 引擎 =========="
 
-if command -v docker >/dev/null 2>&1; then
-    echo "Docker 已安装: $(docker --version)，跳过安装"
+# 关键：先检测 podman 伪装的 docker（本环境 preinstall 的就是它）
+# podman 提供的 /usr/bin/docker 只是兼容别名，rootless 模式在 WSL 下无法运行容器
+# 判断依据：docker info 输出含 "podman" 字样
+if command -v docker >/dev/null 2>&1 && docker info 2>&1 | grep -qi podman; then
+    echo "[清理] 检测到 podman 伪装的 docker，卸载它"
+    sudo apt remove -y podman podman-docker 2>/dev/null || true
+    # podman-docker 可能留下 /usr/bin/docker 软链，删掉
+    sudo rm -f /usr/bin/docker 2>/dev/null || true
+    echo "  podman 已卸载"
+fi
+
+if command -v dockerd >/dev/null 2>&1; then
+    echo "Docker 引擎(dockerd)已安装: $(docker --version 2>&1 | head -1)，跳过安装"
 else
     echo "[1/2] 更新 apt 源"
     sudo apt update -y
@@ -145,24 +156,38 @@ cat /etc/docker/daemon.json
 echo "[配置] 将当前用户加入 docker 组"
 sudo usermod -aG docker "$USER"
 
-# 启动 Docker
+# 启动 Docker（必须 rootful dockerd，不能用 rootless）
 echo "[启动] 启动 Docker 服务"
+# WSL 经典坑：iptables 用 nft 后端会让 dockerd 起不来，先切 legacy
+if command -v update-alternatives >/dev/null 2>&1; then
+    sudo update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
+    sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+fi
+
+STARTED=0
 if command -v systemctl >/dev/null 2>&1 && sudo systemctl start docker 2>/dev/null; then
     sudo systemctl enable docker 2>/dev/null || true
+    STARTED=1
     echo "  systemctl 启动成功"
-else
-    echo "  systemctl 不可用，尝试直接启动 dockerd"
-    # WSL 经典坑：iptables 用 nft 后端会让 dockerd 起不来，切到 legacy
-    if command -v update-alternatives >/dev/null 2>&1; then
-        sudo update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
-        sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
-    fi
+fi
+
+if [ "$STARTED" -eq 0 ]; then
+    echo "  systemctl 不可用，直接启动 dockerd"
+    # 若已有残留进程先清掉
+    sudo pkill -f dockerd 2>/dev/null || true
+    sleep 1
     sudo nohup dockerd >/tmp/dockerd.log 2>&1 &
-    sleep 5
-    if ! docker info >/dev/null 2>&1; then
-        echo "  !! dockerd 启动失败，最近日志："
-        tail -n 15 /tmp/dockerd.log 2>/dev/null || true
-    fi
+    sleep 6
+fi
+
+# 校验：确认连的是真 docker 而非 podman，且服务可用
+if docker info 2>&1 | grep -qi podman; then
+    echo "  !! 仍然是 podman，未切换成功"
+elif docker info >/dev/null 2>&1; then
+    echo "  OK: Docker daemon 正常运行"
+else
+    echo "  !! dockerd 启动失败，最近日志："
+    tail -n 20 /tmp/dockerd.log 2>/dev/null || true
 fi
 
 echo ""
@@ -175,9 +200,11 @@ echo "  1. 重新登录终端（让 docker 组生效，或执行: newgrp docker�
 echo "  2. 验证 node（注意 which 显示的路径）:"
 echo "     which node          # 应显示 /home/cz/.local/node/bin/node"
 echo "     node --version      # 应显示 v26.13.1"
-echo "  3. 验证: docker info | grep -E 'Docker Root Dir|Storage Driver'"
+echo "  3. 验证 docker（确认不是 podman）:"
+echo "     docker info | grep -E 'Docker Root Dir|Storage Driver'"
 echo "     Docker Root Dir 应显示: $DATA_ROOT"
 echo "     Storage Driver 应显示: $STORAGE_DRIVER"
+echo "     （若出现 'Emulate Docker CLI using podman' 说明 podman 没卸干净）"
 echo "  4. 测试: docker run hello-world"
 echo ""
 echo "  重要：如果 which node 仍指向 /usr/bin/node，说明有个旧的坏 node 干扰，"
